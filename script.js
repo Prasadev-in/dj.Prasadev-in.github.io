@@ -1,5 +1,5 @@
 // ============================================
-// DJ DECK - Main Script
+// DJ DECK - Main Script (FIXED AUDIO)
 // ============================================
 
 class DJDeck {
@@ -10,8 +10,8 @@ class DJDeck {
         this.audio = null;
         this.timer = null;
         this.currentTime = 0;
-        this.setDuration = 3600; // 1 hour in seconds
-        this.transitionWindow = 30; // seconds before track ends to suggest transition
+        this.setDuration = 3600;
+        this.transitionWindow = 30;
         
         // DOM Elements
         this.elements = {
@@ -42,70 +42,39 @@ class DJDeck {
         this.renderPlaylist();
         this.updateUI();
         this.setupVisualizer();
+        this.showSuggestion('💡 Upload your own songs or use the demo tracks (click Play)', '#e8f4f8');
     }
     
     loadDemoTracks() {
-        // Replace these with your actual songs from /songs folder
-        // Add your own tracks here with correct BPM values
+        // These are DEMO tracks - they won't play unless you have these files
+        // Use the UPLOAD button to add your own MP3s
         this.playlist = [
             { 
                 id: 1, 
-                title: 'Midnight Groove', 
-                artist: 'DJ Shadow', 
+                title: '🎵 Demo Track 1', 
+                artist: 'Upload your own songs!', 
                 bpm: 124, 
                 key: 'A♭ min', 
-                duration: 240,
-                file: 'songs/track1.mp3',
+                duration: 30, // Short for demo
+                file: null, // No file - will show error
                 energy: 7,
-                genre: 'House'
+                genre: 'House',
+                isDemo: true
             },
             { 
                 id: 2, 
-                title: 'Neon Lights', 
-                artist: 'Synthwave', 
+                title: '🎵 Demo Track 2', 
+                artist: 'Click Upload button', 
                 bpm: 126, 
                 key: 'C maj', 
-                duration: 210,
-                file: 'songs/track2.mp3',
+                duration: 30,
+                file: null,
                 energy: 8,
-                genre: 'Techno'
-            },
-            { 
-                id: 3, 
-                title: 'Deep Blue', 
-                artist: 'Ocean Drive', 
-                bpm: 123, 
-                key: 'E♭ min', 
-                duration: 195,
-                file: 'songs/track3.mp3',
-                energy: 6,
-                genre: 'Deep House'
-            },
-            { 
-                id: 4, 
-                title: 'Pulse', 
-                artist: 'Neon Rhythm', 
-                bpm: 128, 
-                key: 'F maj', 
-                duration: 280,
-                file: 'songs/track4.mp3',
-                energy: 9,
-                genre: 'Drum & Bass'
-            },
-            { 
-                id: 5, 
-                title: 'Echoes', 
-                artist: 'Dusty Decks', 
-                bpm: 125, 
-                key: 'G min', 
-                duration: 215,
-                file: 'songs/track5.mp3',
-                energy: 7,
-                genre: 'Tech House'
+                genre: 'Techno',
+                isDemo: true
             }
         ];
         
-        // Calculate transition scores
         this.calculateAllTransitions();
     }
     
@@ -119,14 +88,11 @@ class DJDeck {
     
     calculateTransitionScore(track1, track2) {
         let score = 0;
-        
-        // BPM compatibility (within 4 BPM = good)
         const bpmDiff = Math.abs(track1.bpm - track2.bpm);
         if (bpmDiff <= 2) score += 40;
         else if (bpmDiff <= 4) score += 20;
         else if (bpmDiff <= 6) score += 10;
         
-        // Key compatibility (simplified)
         const keys = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
         const key1 = track1.key.split(' ')[0];
         const key2 = track2.key.split(' ')[0];
@@ -134,12 +100,10 @@ class DJDeck {
         if (keyDiff === 0 || keyDiff === 5 || keyDiff === 7) score += 30;
         else if (keyDiff <= 2 || keyDiff === 10) score += 15;
         
-        // Energy compatibility
         const energyDiff = Math.abs(track1.energy - track2.energy);
         if (energyDiff <= 1) score += 20;
         else if (energyDiff <= 2) score += 10;
         
-        // Genre compatibility
         if (track1.genre === track2.genre) score += 10;
         
         return Math.min(100, score);
@@ -150,26 +114,26 @@ class DJDeck {
         this.elements.prevBtn.addEventListener('click', () => this.previousTrack());
         this.elements.nextBtn.addEventListener('click', () => this.nextTrack());
         
-        // Progress bar seeking
         this.elements.progress.addEventListener('input', (e) => {
-            if (this.audio) {
-                const seekTime = (e.target.value / 100) * this.getCurrentTrack().duration;
+            if (this.audio && this.audio.duration) {
+                const seekTime = (e.target.value / 100) * this.audio.duration;
                 this.audio.currentTime = seekTime;
                 this.currentTime = seekTime;
             }
         });
         
-        // File upload
+        // FILE UPLOAD - THIS IS HOW YOU ADD REAL SONGS
         this.elements.uploadBtn.addEventListener('click', () => {
             this.elements.fileInput.click();
         });
         
         this.elements.fileInput.addEventListener('change', (e) => {
-            this.handleFileUpload(e.target.files);
-            this.elements.fileInput.value = ''; // Reset for multiple uploads
+            if (e.target.files.length > 0) {
+                this.handleFileUpload(e.target.files);
+                this.elements.fileInput.value = '';
+            }
         });
         
-        // Build set button
         this.elements.buildSetBtn.addEventListener('click', () => {
             this.buildOneHourSet();
         });
@@ -187,30 +151,47 @@ class DJDeck {
     }
     
     handleFileUpload(files) {
-        Array.from(files).forEach(file => {
-            // Only process audio files
-            if (!file.type.startsWith('audio/')) return;
+        const validFiles = Array.from(files).filter(file => file.type.startsWith('audio/'));
+        
+        if (validFiles.length === 0) {
+            this.showSuggestion('⚠️ Please select audio files (MP3, WAV, etc.)', '#fff3cd');
+            return;
+        }
+        
+        // Remove demo tracks if they exist
+        this.playlist = this.playlist.filter(track => !track.isDemo);
+        
+        validFiles.forEach(file => {
+            const url = URL.createObjectURL(file);
+            console.log(`📁 Loaded: ${file.name}`);
             
             const track = {
                 id: Date.now() + Math.random(),
                 title: file.name.replace(/\.[^/.]+$/, ''),
                 artist: 'Unknown Artist',
-                bpm: Math.floor(Math.random() * 20) + 115, // Placeholder - you can edit
+                bpm: Math.floor(Math.random() * 20) + 115,
                 key: ['C maj', 'D min', 'E maj', 'F min', 'G maj', 'A min', 'B maj'][Math.floor(Math.random() * 7)],
-                duration: 180, // Placeholder - will update when loaded
-                file: URL.createObjectURL(file),
+                duration: 180,
+                file: url,
                 energy: Math.floor(Math.random() * 5) + 5,
                 genre: 'Electronic',
-                isUploaded: true
+                isUploaded: true,
+                fileName: file.name
             };
             
-            // Try to get actual duration
-            const audio = new Audio();
-            audio.src = track.file;
-            audio.addEventListener('loadedmetadata', () => {
-                track.duration = Math.floor(audio.duration);
+            // Get actual duration
+            const audioTest = new Audio();
+            audioTest.src = url;
+            audioTest.addEventListener('loadedmetadata', () => {
+                track.duration = Math.floor(audioTest.duration);
                 this.renderPlaylist();
                 this.updateUI();
+                console.log(`✅ ${track.title} - ${track.duration} seconds`);
+            });
+            
+            audioTest.addEventListener('error', () => {
+                console.warn(`⚠️ Could not load: ${file.name}`);
+                track.duration = 30;
             });
             
             this.playlist.push(track);
@@ -220,11 +201,19 @@ class DJDeck {
         this.renderPlaylist();
         this.updateUI();
         this.suggestNextTrack();
+        this.showSuggestion(`✅ Loaded ${validFiles.length} track(s)! Click Play to start`, '#d4edda');
+        
+        // Auto-play first track if nothing is playing
+        if (!this.isPlaying && this.playlist.length > 0) {
+            this.selectTrack(0);
+        }
     }
     
     renderPlaylist() {
         if (this.playlist.length === 0) {
-            this.elements.playlist.innerHTML = `<p class="empty-message">🎵 No tracks yet. Upload some!</p>`;
+            this.elements.playlist.innerHTML = `
+                <p class="empty-message">🎵 No tracks yet.<br>Click <strong>Upload</strong> to add your MP3s!</p>
+            `;
             return;
         }
         
@@ -239,12 +228,15 @@ class DJDeck {
                 <span class="track-duration">${this.formatTime(track.duration)}</span>
                 ${track.transitionScore ? `<span class="transition-score">⚡${track.transitionScore}%</span>` : ''}
                 ${track.isUploaded ? '<span class="badge-uploaded">📤</span>' : ''}
+                ${track.isDemo ? '<span class="badge-demo">🎵</span>' : ''}
             </div>
         `).join('');
         this.elements.playlist.innerHTML = html;
     }
     
     selectTrack(index) {
+        if (index < 0 || index >= this.playlist.length) return;
+        
         if (this.isPlaying) {
             this.pauseTrack();
         }
@@ -257,7 +249,16 @@ class DJDeck {
     
     togglePlay() {
         if (this.playlist.length === 0) {
-            this.showSuggestion('⚠️ No tracks in playlist! Upload some songs first.', '#fff3cd');
+            this.showSuggestion('⚠️ No tracks! Click "Upload" to add some songs.', '#fff3cd');
+            return;
+        }
+        
+        const track = this.getCurrentTrack();
+        if (!track) return;
+        
+        // Check if track has a valid file
+        if (!track.file) {
+            this.showSuggestion('⚠️ This track has no audio file. Upload your own songs!', '#fff3cd');
             return;
         }
         
@@ -270,36 +271,73 @@ class DJDeck {
     
     playTrack() {
         const track = this.getCurrentTrack();
-        if (!track) return;
+        if (!track || !track.file) {
+            this.showSuggestion('⚠️ No audio file for this track. Upload your own songs!', '#fff3cd');
+            return;
+        }
         
-        // Create audio element
-        this.audio = new Audio(track.file);
-        this.audio.currentTime = this.currentTime;
-        this.audio.play();
-        this.isPlaying = true;
-        this.elements.playBtn.textContent = '⏸';
-        this.elements.playBtn.classList.add('playing');
-        
-        // Update progress
-        this.updateProgress();
-        this.visualize();
-        this.suggestNextTrack();
-        
-        // Auto-advance when track ends
-        this.audio.addEventListener('ended', () => {
-            this.nextTrack();
-        });
+        try {
+            // Create audio element
+            this.audio = new Audio();
+            this.audio.src = track.file;
+            this.audio.currentTime = this.currentTime;
+            
+            // Play with error handling
+            const playPromise = this.audio.play();
+            
+            if (playPromise !== undefined) {
+                playPromise
+                    .then(() => {
+                        this.isPlaying = true;
+                        this.elements.playBtn.textContent = '⏸';
+                        this.elements.playBtn.classList.add('playing');
+                        this.updateProgress();
+                        this.visualize();
+                        this.suggestNextTrack();
+                        console.log(`▶️ Playing: ${track.title}`);
+                    })
+                    .catch(error => {
+                        console.error('Playback error:', error);
+                        this.showSuggestion(`⚠️ Cannot play: ${error.message}. Try uploading a different file.`, '#f8d7da');
+                        this.isPlaying = false;
+                        this.elements.playBtn.textContent = '▶';
+                        this.elements.playBtn.classList.remove('playing');
+                    });
+            }
+            
+            // Auto-advance when track ends
+            this.audio.addEventListener('ended', () => {
+                console.log('⏹️ Track ended');
+                this.nextTrack();
+            });
+            
+            // Handle errors
+            this.audio.addEventListener('error', (e) => {
+                console.error('Audio error:', e);
+                this.showSuggestion('⚠️ Audio error. Try re-uploading the file.', '#f8d7da');
+                this.pauseTrack();
+            });
+            
+        } catch (error) {
+            console.error('Error creating audio:', error);
+            this.showSuggestion('⚠️ Error playing track. Check console for details.', '#f8d7da');
+        }
     }
     
     pauseTrack() {
         if (this.audio) {
-            this.audio.pause();
-            this.currentTime = this.audio.currentTime;
+            try {
+                this.audio.pause();
+                this.currentTime = this.audio.currentTime || 0;
+            } catch (e) {
+                console.warn('Pause error:', e);
+            }
         }
         this.isPlaying = false;
         this.elements.playBtn.textContent = '▶';
         this.elements.playBtn.classList.remove('playing');
         clearInterval(this.timer);
+        console.log('⏸️ Paused');
     }
     
     previousTrack() {
@@ -325,7 +363,7 @@ class DJDeck {
             } else {
                 this.selectTrack(this.currentTrackIndex);
             }
-        } else {
+        } else if (this.playlist.length > 0) {
             // Loop back to start
             this.currentTrackIndex = 0;
             this.currentTime = 0;
@@ -339,7 +377,7 @@ class DJDeck {
     }
     
     getCurrentTrack() {
-        return this.playlist[this.currentTrackIndex];
+        return this.playlist[this.currentTrackIndex] || null;
     }
     
     updateUI() {
@@ -347,10 +385,11 @@ class DJDeck {
         if (track) {
             this.elements.currentTrack.innerHTML = `
                 <strong>${track.title}</strong> 
-                <span style="color: #888;">by ${track.artist}</span>
+                ${track.artist !== 'Unknown Artist' ? `<span style="color: #888;">by ${track.artist}</span>` : ''}
                 <span style="font-size: 0.8em; color: #888; margin-left: 10px;">
                     ${track.bpm} BPM | ${track.key}
                 </span>
+                ${track.file ? '' : '<span style="color: #fd79a8; margin-left: 10px;">⚠️ No audio</span>'}
             `;
             this.elements.bpmDisplay.textContent = `${track.bpm} BPM`;
             this.elements.keyDisplay.textContent = track.key;
@@ -364,16 +403,15 @@ class DJDeck {
         clearInterval(this.timer);
         
         this.timer = setInterval(() => {
-            if (this.audio && this.isPlaying) {
+            if (this.audio && this.isPlaying && this.audio.duration) {
                 const track = this.getCurrentTrack();
                 if (!track) return;
                 
-                const progress = (this.audio.currentTime / track.duration) * 100;
+                const progress = (this.audio.currentTime / this.audio.duration) * 100;
                 this.elements.progress.value = progress;
                 this.elements.timeCurrent.textContent = this.formatTime(this.audio.currentTime);
                 
-                // Check if we're in transition window
-                const remaining = track.duration - this.audio.currentTime;
+                const remaining = this.audio.duration - this.audio.currentTime;
                 if (remaining <= this.transitionWindow && remaining > 0) {
                     this.showTransitionAlert();
                 }
@@ -383,13 +421,13 @@ class DJDeck {
     
     showTransitionAlert() {
         const nextTrack = this.playlist[this.currentTrackIndex + 1];
-        if (nextTrack) {
+        if (nextTrack && nextTrack.file) {
             const current = this.getCurrentTrack();
             const score = this.calculateTransitionScore(current, nextTrack);
             this.showSuggestion(
-                `⚡ TRANSITION SOON: Mix into "<strong>${nextTrack.title}</strong>" 
+                `⚡ TRANSITION: Mix into "<strong>${nextTrack.title}</strong>" 
                 (${current.bpm} → ${nextTrack.bpm} BPM) 
-                <br><small>Compatibility: ${score}% • Mix at: 8 bars before end</small>`,
+                <br><small>Compatibility: ${score}% • Mix now!</small>`,
                 '#fff3cd'
             );
         }
@@ -398,16 +436,16 @@ class DJDeck {
     suggestNextTrack() {
         const current = this.getCurrentTrack();
         if (!current || this.playlist.length < 2) {
-            this.showSuggestion('💡 Add more tracks for smart suggestions!', '#e8f4f8');
+            this.showSuggestion('💡 Upload more tracks for smart suggestions!', '#e8f4f8');
             return;
         }
         
-        // Find best matching next track
         let bestMatch = null;
         let bestScore = 0;
         
         this.playlist.forEach((track, index) => {
             if (index === this.currentTrackIndex) return;
+            if (!track.file) return;
             const score = this.calculateTransitionScore(current, track);
             if (score > bestScore) {
                 bestScore = score;
@@ -431,29 +469,28 @@ class DJDeck {
     }
     
     buildOneHourSet() {
-        if (this.playlist.length < 3) {
-            this.showSuggestion('⚠️ Need at least 3 tracks to build a set!', '#fff3cd');
+        const realTracks = this.playlist.filter(t => t.file && !t.isDemo);
+        
+        if (realTracks.length < 3) {
+            this.showSuggestion('⚠️ Need at least 3 uploaded tracks to build a set!', '#fff3cd');
             return;
         }
         
         const setList = [];
         let totalTime = 0;
         let remaining = this.setDuration;
-        let available = [...this.playlist];
+        let available = [...realTracks];
         
-        // Start with a high-energy track
         let current = available.sort((a, b) => b.energy - a.energy)[0];
         setList.push(current);
         totalTime += current.duration;
         remaining -= current.duration;
         available = available.filter(t => t.id !== current.id);
         
-        // Build the set
         let attempts = 0;
         while (remaining > 0 && available.length > 0 && attempts < 50) {
             attempts++;
             
-            // Find best match for current track
             let bestMatch = null;
             let bestScore = 0;
             
@@ -474,7 +511,6 @@ class DJDeck {
             available = available.filter(t => t.id !== current.id);
         }
         
-        // Display the set
         this.elements.setBuilder.style.display = 'block';
         this.elements.setBuilder.innerHTML = `
             <div class="set-header">
@@ -502,7 +538,6 @@ class DJDeck {
             </div>
         `;
         
-        // Scroll to set builder
         this.elements.setBuilder.scrollIntoView({ behavior: 'smooth' });
     }
     
@@ -539,24 +574,23 @@ class DJDeck {
         
         this.visualize = () => {
             if (!this.isPlaying || !this.audio) {
-                // Draw idle animation
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = 'rgba(108, 92, 231, 0.1)';
+                ctx.fillStyle = 'rgba(108, 92, 231, 0.05)';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Idle dots
+                for (let i = 0; i < 30; i++) {
+                    const x = (i / 30) * canvas.width;
+                    const height = 5 + Math.sin(Date.now() / 1000 + i) * 3;
+                    ctx.fillStyle = `rgba(108, 92, 231, 0.1)`;
+                    ctx.fillRect(x, canvas.height / 2 - height / 2, 3, height);
+                }
+                requestAnimationFrame(this.visualize);
                 return;
             }
             
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            // Get audio data if available
-            let dataArray = [];
-            if (this.audio && this.audio.context) {
-                // Simple visualization using oscillator data
-                const analyser = this.audio.context.createAnalyser();
-                // This is simplified - real implementation would use Web Audio API
-            }
-            
-            // Random bars for demo (replace with actual audio data in production)
             const bars = 48;
             const barWidth = canvas.width / bars;
             const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
@@ -564,8 +598,18 @@ class DJDeck {
             gradient.addColorStop(0.5, '#a29bfe');
             gradient.addColorStop(1, '#6c5ce7');
             
+            // Get audio data if available via Web Audio API
+            let dataArray = [];
+            if (this.audio && this.audio.src) {
+                try {
+                    // Simple visualization using random data for visual effect
+                    // Real implementation would use AnalyserNode
+                } catch (e) {}
+            }
+            
+            // Animated bars
             for (let i = 0; i < bars; i++) {
-                const height = Math.random() * canvas.height * 0.8 + 5;
+                const height = (Math.sin(Date.now() / 200 + i * 0.3) * 0.5 + 0.6) * canvas.height * 0.7 + 10;
                 const x = i * barWidth;
                 const y = canvas.height - height;
                 
@@ -579,12 +623,11 @@ class DJDeck {
             requestAnimationFrame(this.visualize);
         };
         
-        // Start idle animation
         this.visualize();
     }
     
     formatTime(seconds) {
-        if (!seconds || isNaN(seconds)) return '0:00';
+        if (!seconds || isNaN(seconds) || seconds === Infinity) return '0:00';
         const m = Math.floor(seconds / 60);
         const s = Math.floor(seconds % 60);
         return `${m}:${s.toString().padStart(2, '0')}`;
@@ -598,5 +641,5 @@ const dj = new DJDeck();
 window.dj = dj;
 
 console.log('🎧 DJ Deck ready!');
-console.log(`📊 ${dj.playlist.length} tracks loaded`);
+console.log('📤 Click "Upload" to add your MP3 files');
 console.log('💡 Press SPACE to play/pause, ← → to change tracks');
